@@ -1,6 +1,6 @@
 ---
 title: "Parcial fundamentos"
-author: "Nombres:"
+author: "Nombres: DYLAN GABRIEL GONZALEZ SANCHEZ y GERARDO ROCHA BENIGNO"
 output: html_document
 ---
 
@@ -34,8 +34,40 @@ knitr::opts_chunk$set(echo = TRUE, error = TRUE)
 Pacientes con cancer terminal avanzado en el estómago y mama se trataron con ascorbato para prolongar la supervivencia. Los datos `ascorbate` muestran 
 la supervivencia en días. Trabaja con los datos en escala logarítimica.
 
+```{r}
+# Cargamos el conjunto de datos
+# Traducimos los nombres de las columnas al español
+ascorbate <- read_csv(".\\datos\\ascorbate.csv", show_col_types = FALSE) |>
+  rename(estomago=stomach, mama = breast)
+
+
+# Para realizar la prueba de hipótesis visual, es necesario  que el conjunto de datos tengala siguiente forma: columnas = c("dias de supervivencia", "tipo de cáncer")
+ascorbato <- pivot_longer(ascorbate, cols=c(estomago, mama), names_to = "tipo_cancer", values_to = "dias")
+
+```
+
+Antes de realizar la prueba de hipótesis visual, visualizaremos la distribución de días de supervivencia de la muestra original. A primera vista, pareciera que la distribución del número de días tiende a valores más elevados para los pacientes con cancer de mamá que a los pacientes con cáncer de estómago, aunque la hipotesis visual nos ayudará a corroborar si esto es cierto o no.
+
+```{r}
+ggplot(na.omit(ascorbato), aes(y = factor(tipo_cancer), x = dias)) +
+  geom_boxplot() + labs(title='Distribución del número de días de supervivencia a pacientes\n de cáncer a quienes se les administró ascorbato',
+                        x='Días de supervivencia', y ='Tipo de cancer') +
+  scale_y_discrete(labels = c("estomago" = "Estómago", "mama" = "Mama"))
+```
 1. Realiza una prueba de hipótesis visual para comparar las mediciones de 
 los dos grupos. Describe tus conclusiones.
+
+Procedemos a realizar la hipotesis visual.
+```{r}
+library(nullabor)
+set.seed(2178827)
+perms_tipo <- lineup(null_permute("tipo_cancer"), na.omit(ascorbato), n = 20)
+
+ggplot(perms_tipo, aes(x = dias, y = tipo_cancer)) +
+  geom_boxplot() + 
+  facet_wrap(~.sample)
+```
+
 
 2. Usa una prueba de permutación para examinar la hipótesis de que no hay 
 diferencia en la media de los tiempos de supervivencia. Escribe la hipóteisis nula, hipótesis alterna, y reporta el valor $p$ de la prueba.

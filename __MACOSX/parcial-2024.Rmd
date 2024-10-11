@@ -163,7 +163,7 @@ puede resultar útil usar `lag()`. Presenta una tabla con tus resultados.
 ```{r}
 aux <- zolmitriptan |> select(subj, formulation, hora, concentracion) |> filter(subj==2)
 
-aux |> group_by(subj, formulation) |> mutate(lag_hora = lag(hora), lag_concentracion = lag(concentracion), )
+aux |> group_by(subj, formulation) |> mutate(lag_hora = lag(hora), )
 ```
 
 

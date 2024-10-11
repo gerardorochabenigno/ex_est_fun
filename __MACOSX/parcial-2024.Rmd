@@ -58,15 +58,16 @@ ggplot(na.omit(ascorbato), aes(y = factor(tipo_cancer), x = log_dias)) +
 1. Realiza una prueba de hipótesis visual para comparar las mediciones de 
 los dos grupos. Describe tus conclusiones.
 
-Procedemos a realizar la hipotesis visual.
+Procedemos a realizar la hipotesis visual. Con la prueba visual, parece que el gráfico 1 es aquel de los datos verdaderos. 
 ```{r}
 library(nullabor)
-set.seed(2178827)
+set.seed(123)
 perms_tipo <- lineup(null_permute("tipo_cancer"), na.omit(ascorbato), n = 20)
 
 ggplot(perms_tipo, aes(x = log_dias, y = tipo_cancer)) +
   geom_boxplot() + 
-  facet_wrap(~.sample)
+  facet_wrap(~.sample)+ labs(title = "Prueba de hipotesis visual para\nconocer si hay diferenca estadística \nentre los días de supervivencia para dos grupos de pacientes",
+                             x= "Días de supervivencia (log)", y = "Tipo de cáncer")
 ```
 
 
@@ -161,9 +162,20 @@ $c$ es la concentración y $t$ son las horas. Tip: Si usas las funciones de dply
 puede resultar útil usar `lag()`. Presenta una tabla con tus resultados.
 
 ```{r}
-aux <- zolmitriptan |> select(subj, formulation, hora, concentracion) |> filter(subj==2)
+auc <- zolmitriptan |>
+  select(subj, formulation, hora, concentracion) |> 
+  group_by(subj, formulation) |> 
+  mutate(hora_base = hora - lag(hora),
+         concentracion_altura = (concentracion+lag(concentracion))/2,
+         base_altura = hora_base*concentracion_altura) |>
+  summarize(auc= sum(base_altura, na.rm=TRUE))
 
-aux |> group_by(subj, formulation) |> mutate(lag_hora = lag(hora), )
+ggplot(auc, aes(x=formulation, y = auc)) + 
+  geom_boxplot() + 
+  labs(title="Distribución del área bajo la curva\nde la concentración de Zolmitriptan",
+       x= "Formulación",
+       y= "Área bajo la curva")
+
 ```
 
 
@@ -176,8 +188,56 @@ $\theta = \mu_T/\mu_R$.
 
 3. Calcula el estimador *plug-in* de $\theta$.
 
+```{r}
+zol2 <- read_csv(".\\datos\\zolmitriptan.csv", show_col_types = FALSE)
+theta <- zol2 |> 
+  summarize(mu = sum(AUC)/n(), .by = Formulation) |>
+  pivot_wider(names_from = "Formulation", values_from = "mu", names_prefix = "mu_") |>
+  mutate(theta = mu_T/mu_R)
+
+sprintf("Estimador plug-in de theta: %1.3f", theta$theta)
+
+```
 4. Usa bootstrap para generar un intervalo del 90% de confianza para $\theta$, 
 ¿la nueva tableta cumple el criterio de bioequivalencia de la FDA?
+
+Primero creamos un tibble con la distribución bootstrap del estimador de razón de AUC
+
+```{r}
+set.seed(123)
+dist_boot_auc <- map_df(1:5000, 
+                    ~slice_sample(zol2, prop = 1, replace = TRUE, by = Formulation) |> 
+                      summarize(mu = sum(AUC)/n(), .by = Formulation) |>
+                      pivot_wider(names_from = "Formulation", values_from = "mu", names_prefix = "mu_") |>
+                      mutate(theta = mu_T/mu_R) |>
+                      mutate(iter = .x)
+                    )
+```
+
+Checamos normalidad mediante un gráfico de cuantiles normales
+```{r}
+g1 <- ggplot(dist_boot, aes(x=theta)) + 
+  geom_histogram(bins = 50)
+g2 <- ggplot(dist_boot, aes(sample=theta)) + stat_qq() + stat_qq_line() +labs(y="Theta (AUC)")
+g2
+
+```
+
+
+Obtenemos los intervalos por método de percentiles y normal. Con ambos métodos concluimos que la nueva formulación cumple con los requerimentos de bioequivalencia de la FDA
+```{r}
+sprintf("Intervalo del 90%% de confianza usando el método de percentiles: (%1.5f , %1.5f)", 
+        unname(quantile(dist_boot$theta, probs = c(0.05))),
+        unname(quantile(dist_boot$theta, probs = c(0.95)))
+        )
+# La dist. normal acumula el 90% de la distribución en aproximadamente 1.645 la desviación estándar alrededor de la media
+sprintf("Intervalo del 90%% de confianza usando el método normal: (%1.5f , %1.5f)", 
+        theta$theta - 1.645*sd(dist_boot$theta),
+        theta$theta + 1.645*sd(dist_boot$theta)
+        )
+
+print("El intervalo de confianza bootstrap muestra que el cociente de las medias del área bajo la curva cumple con los requerimientos de la FDA")
+```
 
 ### 3. Bootstrap encuestas 
 
@@ -191,8 +251,92 @@ Tecnologías de la Información en los Hogares (ENDUTIH) para estimar a nivel na
 1. Reporta estimaciones puntuales e intervalos de confianza del 95% (utilizando bootstrap
 de Rao y Wu, puedes usar los paquetes survey o srvyr).
 
+```{r}
+dic_endutih <- read_csv(".\\datos\\endutih\\diccionario_de_datos_tr_endutih_hogares_anual_2023.csv", show_col_types = FALSE)
+tr_endutih <- read_csv(".\\datos\\endutih\\tr_endutih_hogares_anual_2023.csv", show_col_types = FALSE)
+```
+Calculamos los estimadores
+```{r}
+# la proporción de hogares que tienen acceso a internet.  P4_4: 1=Si, 2=No
+# la proporción de hogares con teléfono fijo.  
+# la proporción de hogares con teléfono móvil.  P4_1_6: 1=Si, 2=No
+estimadores <- tr_endutih |> select(P4_4, P4_1_6, P5_5, FAC_HOG) |>
+  mutate(internet = if_else(P4_4==1, 1, 0)*FAC_HOG,
+         movil    = if_else(P4_1_6==1, 1, 0)*FAC_HOG,
+         fijo     = if_else(P4_1_6==1, 1, 0)*FAC_HOG) |>
+  summarise(estimadores="Estimadores",
+            prop_internet = sum(internet)/sum(FAC_HOG),
+            prop_movil    = sum(movil)/sum(FAC_HOG))
+```
+```{r}
+library(srvyr)
+set.seed(7398731)
+        
+# Transformamos tibble a tbl_svy 
+endutih_design <- tr_endutih |> 
+  select(UPM, FAC_HOG, EST_DIS, P4_4, P4_1_6, ENT) |>
+  mutate(con_internet = if_else(P4_4==1,1,0),
+         con_movil    = if_else(P4_1_6==1,1,0)) |>
+  select(UPM, FAC_HOG, EST_DIS, ENT, con_internet, con_movil) |>
+  as_survey_design(ids = UPM, weights = FAC_HOG, strata = EST_DIS)
+
+# Calculamos el error muestral bootstrap
+endutih_boot <- endutih_design %>% 
+  as_survey_rep(type = "subbootstrap", replicates = 500)
+
+```
+
+```{r}
+# Reportamos el error muestral bootstrap
+metricas <- endutih_boot %>% 
+  srvyr::summarise(prop_internet = survey_mean(con_internet),
+                   prop_movil    = survey_mean(con_movil))
+metricas
+```
+
+Reportamos los intervalos de confianza
+
+```{r}
+sprintf("Estimador puntual de la proporción de hogares con acceso a internet: %1.5f", metricas$prop_internet)
+sprintf("Estimador puntual de la proporción de hogares con teléfono móvil: %1.5f", metricas$prop_movil)
+
+
+sprintf("Intervalo del 95%% de confianza de la proporciòn de hogares con acceso a internet: (%1.5f, %1.5f)", 
+        metricas$prop_internet-2*metricas$prop_internet_se, 
+        metricas$prop_internet+2*metricas$prop_internet_se)
+
+sprintf("Intervalo del 95%% de confianza de la proporciòn de hogares con teléfono móvil: (%1.5f, %1.5f)", 
+        metricas$prop_movil-2*metricas$prop_movil_se, 
+        metricas$prop_movil+2*metricas$prop_movil_se)
+
+```
+
 2. Elige una de las métricas de arriba y calcula intervalos de confianza por estado, 
 grafica los intervalos y discute los resultados.
 
+```{r}
+estado_internet <- endutih_boot %>% 
+  group_by(ENT) %>% 
+  srvyr::summarise(prop_internet = survey_mean(con_internet)) |>
+  mutate(inf = prop_internet - 2* prop_internet_se,
+         sup = prop_internet + 2* prop_internet_se)
 
+```
 
+```{r}
+estados <- read_delim(".//datos//estados.txt", show_col_types = FALSE)
+estado_internet_2 <- left_join(estado_internet, estados, by="ENT") |>select(nombre, inf, sup, prop_internet)
+estado_internet_2
+```
+
+```{r, fig.width=8, fig.height=10}
+
+ggplot(estado_internet_2, aes(x = prop_internet, y = factor(nombre, levels = sort(nombre)), xmax = sup, xmin = inf)) + 
+  geom_point(colour = "red") + 
+  geom_linerange() +
+  geom_hline(yintercept = 0, colour = "gray") + 
+  labs(title="Proporción de hogares en cada estado con acceso a internet",
+       x="Proporción de hogares con acceso a internet",
+       y="Estado")
+
+```

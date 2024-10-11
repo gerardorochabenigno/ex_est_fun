@@ -42,14 +42,15 @@ ascorbate <- read_csv(".//datos//ascorbate.csv", show_col_types = FALSE) |>
 
 
 # Para realizar la prueba de hipótesis visual, es necesario  que el conjunto de datos tengala siguiente forma: columnas = c("dias de supervivencia", "tipo de cáncer")
-ascorbato <- pivot_longer(ascorbate, cols=c(estomago, mama), names_to = "tipo_cancer", values_to = "dias")
+ascorbato <- pivot_longer(ascorbate, cols=c(estomago, mama), names_to = "tipo_cancer", values_to = "dias") |>
+  mutate(log_dias = log(dias))
 
 ```
 
 Antes de realizar la prueba de hipótesis visual, visualizaremos la distribución de días de supervivencia de la muestra original. A primera vista, pareciera que la distribución del número de días tiende a valores más elevados para los pacientes con cancer de mamá que a los pacientes con cáncer de estómago, aunque la hipotesis visual nos ayudará a corroborar si esto es cierto o no.
 
 ```{r}
-ggplot(na.omit(ascorbato), aes(y = factor(tipo_cancer), x = dias)) +
+ggplot(na.omit(ascorbato), aes(y = factor(tipo_cancer), x = log_dias)) +
   geom_boxplot() + labs(title='Distribución del número de días de supervivencia a pacientes\n de cáncer a quienes se les administró ascorbato',
                         x='Días de supervivencia', y ='Tipo de cancer') +
   scale_y_discrete(labels = c("estomago" = "Estómago", "mama" = "Mama"))
@@ -63,7 +64,7 @@ library(nullabor)
 set.seed(2178827)
 perms_tipo <- lineup(null_permute("tipo_cancer"), na.omit(ascorbato), n = 20)
 
-ggplot(perms_tipo, aes(x = dias, y = tipo_cancer)) +
+ggplot(perms_tipo, aes(x = log_dias, y = tipo_cancer)) +
   geom_boxplot() + 
   facet_wrap(~.sample)
 ```
@@ -133,13 +134,11 @@ zolmitriptan <- zolmitriptan_raw |> pivot_longer(cols = c(starts_with("HR")), na
 
 ggplot(zolmitriptan, aes(x = hora, y = concentracion, group = formulation, colour = formulation)) +
   geom_line() + 
-  labs(x="Tiempo transcurrido (horas)", y ="Zolmitriptano (mCG/ml)") +
+  labs(title="Concentración de Zolmitriptano en la sangre para diversos individuos",x="Tiempo transcurrido desde la toma de la dosis (horas)", y ="Zolmitriptano (mCG/ml)") +
   theme(panel.spacing = unit(0.1, "lines")) +
   theme_bw(base_size = 15) +
   theme(strip.text = element_text(size = 12)) + 
   facet_wrap(~subj, ncol = 6, scales="free") 
-
-
 ```
 
 
@@ -160,6 +159,13 @@ fórmula de área trapezoidal:
 $$AUC = \sum_{\tau=1}^k(c_\tau + c_{\tau−1}) × (t_\tau − t_{\tau-1}) / 2$$ donde 
 $c$ es la concentración y $t$ son las horas. Tip: Si usas las funciones de dplyr 
 puede resultar útil usar `lag()`. Presenta una tabla con tus resultados.
+
+```{r}
+aux <- zolmitriptan |> select(subj, formulation, hora, concentracion) |> filter(subj==2)
+
+aux |> group_by(subj, formulation) |> mutate(lag_hora = lag(hora), lag_concentracion = lag(concentracion), )
+```
+
 
 Para los siguientes incisos usa los datos zolmitriptan.csv, 
 para el $i$-ésimo individuo `subj` tienes mediciones de AUC bajo tratamiento y 

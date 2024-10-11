@@ -37,7 +37,7 @@ la supervivencia en días. Trabaja con los datos en escala logarítimica.
 ```{r}
 # Cargamos el conjunto de datos
 # Traducimos los nombres de las columnas al español
-ascorbate <- read_csv(".\\datos\\ascorbate.csv", show_col_types = FALSE) |>
+ascorbate <- read_csv(".//datos//ascorbate.csv", show_col_types = FALSE) |>
   rename(estomago=stomach, mama = breast)
 
 
@@ -95,6 +95,7 @@ prueba) o dos tabletas de 2.5 mg (formulación referencia).
 * Se recolectaron muestras de sangre antes de la dosis y durante las siguientes 
 24 horas. 
 
+
 Realiza lo siguiente:
 
 1. Lee los datos `zolmitriptan-raw.txt`, las variables son: 
@@ -123,6 +124,23 @@ horizontal la hora, en el eje vertical la concentración para cada persona, bajo
 cada tratamiento. Un ejemplo de lo que debes hacer  es [esta gráfica](https://en.wikipedia.org/wiki/Bioequivalence#/media/File:Bupropion_bioequivalency_comparison.svg),
 con la diferencia que la curva de Wikipedia es el promedio sobre todos los individuos y 
 tu graficarás una para cada uno. ¿Qué puedes ver en las gráficas?
+
+```{r, fig.width=20, fig.height=15}
+# Pivoteamos para tener un dataframe que podamos gráficar.
+zolmitriptan <- zolmitriptan_raw |> pivot_longer(cols = c(starts_with("HR")), names_prefix = "HR",  names_to = "hora", values_to =  "concentracion") |> 
+  mutate(hora = as.numeric(hora)/10,
+         formulation = if_else(formulation=="T", "Prueba", "Referencia"))
+
+ggplot(zolmitriptan, aes(x = hora, y = concentracion, group = formulation, colour = formulation)) +
+  geom_line() + 
+  labs(x="Tiempo transcurrido (horas)", y ="Zolmitriptano (mCG/ml)") +
+  theme(panel.spacing = unit(0.1, "lines")) +
+  theme_bw(base_size = 15) +
+  theme(strip.text = element_text(size = 12)) + 
+  facet_wrap(~subj, ncol = 6, scales="free") 
+
+
+```
 
 
 Para comprobar bioequivalencia la FDA solicita que el medicamento de prueba 

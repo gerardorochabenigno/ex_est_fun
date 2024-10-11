@@ -1,0 +1,174 @@
+---
+title: "Parcial fundamentos"
+author: "Nombres: DYLAN GABRIEL GONZALEZ SANCHEZ y GERARDO ROCHA BENIGNO"
+output: html_document
+---
+
+**Entrega:** 16 de octubre antes de las 16:00 horas por Canvas.
+
+**Instrucciones:**
+
+* Tus respuestas deben ser claras y debes explicar 
+los resultados, incluye también tus procedimientos/código de manera ordenada, 
+y el código comentado.
+
+* Se evaluará la presentación de resultados (calidad de las gráficas, tablas, 
+...), revisa la sección de visualización en las notas.
+
+* Se puede realizar individual o en parejas.
+
+* Si tienes preguntas puedes escribirlas en el anuncio de canvas del examen, 
+será el único medio para resolver dudas del examen.
+
+
+```{r setup, include=FALSE, message=FALSE}
+library(tidyverse)
+knitr::opts_chunk$set(echo = TRUE, error = TRUE)
+```
+
+
+## Pruebas de hipótesis
+
+### 1. Pruebas de hipótesis: Ascorbato
+
+Pacientes con cancer terminal avanzado en el estómago y mama se trataron con ascorbato para prolongar la supervivencia. Los datos `ascorbate` muestran 
+la supervivencia en días. Trabaja con los datos en escala logarítimica.
+
+```{r}
+# Cargamos el conjunto de datos
+# Traducimos los nombres de las columnas al español
+ascorbate <- read_csv(".\\datos\\ascorbate.csv", show_col_types = FALSE) |>
+  rename(estomago=stomach, mama = breast)
+
+
+# Para realizar la prueba de hipótesis visual, es necesario  que el conjunto de datos tengala siguiente forma: columnas = c("dias de supervivencia", "tipo de cáncer")
+ascorbato <- pivot_longer(ascorbate, cols=c(estomago, mama), names_to = "tipo_cancer", values_to = "dias")
+
+```
+
+Antes de realizar la prueba de hipótesis visual, visualizaremos la distribución de días de supervivencia de la muestra original. A primera vista, pareciera que la distribución del número de días tiende a valores más elevados para los pacientes con cancer de mamá que a los pacientes con cáncer de estómago, aunque la hipotesis visual nos ayudará a corroborar si esto es cierto o no.
+
+```{r}
+ggplot(na.omit(ascorbato), aes(y = factor(tipo_cancer), x = dias)) +
+  geom_boxplot() + labs(title='Distribución del número de días de supervivencia a pacientes\n de cáncer a quienes se les administró ascorbato',
+                        x='Días de supervivencia', y ='Tipo de cancer') +
+  scale_y_discrete(labels = c("estomago" = "Estómago", "mama" = "Mama"))
+```
+1. Realiza una prueba de hipótesis visual para comparar las mediciones de 
+los dos grupos. Describe tus conclusiones.
+
+Procedemos a realizar la hipotesis visual.
+```{r}
+library(nullabor)
+set.seed(2178827)
+perms_tipo <- lineup(null_permute("tipo_cancer"), na.omit(ascorbato), n = 20)
+
+ggplot(perms_tipo, aes(x = dias, y = tipo_cancer)) +
+  geom_boxplot() + 
+  facet_wrap(~.sample)
+```
+
+
+2. Usa una prueba de permutación para examinar la hipótesis de que no hay 
+diferencia en la media de los tiempos de supervivencia. Escribe la hipóteisis nula, hipótesis alterna, y reporta el valor $p$ de la prueba.
+
+
+## 2. Bootstrap: Bioequivalencia
+
+La bioequivalencia es un término utilizado en farmacocinética para evaluar la 
+equivalencia terapéutica entre dos formulaciones de un medicamento que contiene 
+el mismo principio activo o fármaco. Cuando una farmacéutica cambia una fórmula 
+o desarrolla una nueva presentación de un medicamento ya disponible al público, 
+requiere aprobación de la FDA para poder distribuirlo, para lograr esta 
+aprobación debe demostrar que el nuevo medicamento es bioequivalente al 
+medicamento ya aprobado, es así que se diseñan ensayos clínicos donde se compara 
+la respuesta de los participantes al recibir las distintas formulaciones del 
+medicamento. 
+
+En este ejercicio analizarás la bioequivalencia de una nueva tableta de 
+Zolmitriptano de 5 mg en relación a tabletas aprobadas de 2.5 mg:
+
+* En el ensayo clínico participaron 24 voluntarios saludables, cada uno se 
+asignó de manera aleatoria para recibir la formulación de 5 mg (formulación a 
+prueba) o dos tabletas de 2.5 mg (formulación referencia).
+
+* Se recolectaron muestras de sangre antes de la dosis y durante las siguientes 
+24 horas. 
+
+Realiza lo siguiente:
+
+1. Lee los datos `zolmitriptan-raw.txt`, las variables son: 
+    + `formulation` indica si la observación corresponde a formulación de 
+    refernecia o de prueba, 
+    + `subj` identifica al sujeto, 
+    + `seq` toma dos valores 1 indica que el sujeto se evaluó tomando la 
+    formulación de tratamiento primero y después la de referencia, 2 indica el 
+    caso contrario,
+    + `prd` indica el periodo (1 o 2), 
+    + las variables `HRXX` indican la medición (concentración de Zolmitriptano en 
+    mCG/ml) para la hora XX (HR00 corresponde a la hora cero, HR05 a media hora, 
+    HR10 a una hora,..., HR240 a 24 horas). 
+    Desafortunadamente estos datos crudos están truncados y para algunos sujetos
+(1, 3, 5, 8, 9, 12, 16, 17, 19, 22, 23) no tenemos las mediciones del tratamiento 
+de referencia, sin embargo, podemos usar la información disponible para entender
+como se calculan las métricas.
+
+```{r}
+zolmitriptan_raw <- read_delim("datos/zolmitriptan-raw.txt", 
+    "\t", escape_double = FALSE, trim_ws = TRUE)
+```
+
+1. Grafica la concentración del medicamento por hora. Debes graficar en el eje 
+horizontal la hora, en el eje vertical la concentración para cada persona, bajo 
+cada tratamiento. Un ejemplo de lo que debes hacer  es [esta gráfica](https://en.wikipedia.org/wiki/Bioequivalence#/media/File:Bupropion_bioequivalency_comparison.svg),
+con la diferencia que la curva de Wikipedia es el promedio sobre todos los individuos y 
+tu graficarás una para cada uno. ¿Qué puedes ver en las gráficas?
+
+
+Para comprobar bioequivalencia la FDA solicita que el medicamento de prueba 
+tenga un comportamiento similar al del medicamento de referencia. Para ello se
+compara la máxima concentración de medicamento (CMAX), el tiempo que tarda el 
+individuo en alcanzar las concentración máxima en sangre (TMAX), y el área bajo 
+la curva de concentración contra tiempofci (AUC, que acabas de graficar). En 
+particular para que la FDA concluya bioequivalencia se requiere que para cada 
+medición (CMAX, TMAX y AUC) un intervalo de 90% de confianza para el cociente 
+$\mu_T/\mu_R$ de la media del tratamiento de prueba $\mu_T$ y la media de la 
+referencia $\mu_R$ esté contenido en el intervalo $(80\%, 125\%)$. En este 
+ejercicio usarás bootstrap para calcular un intervalo de confianza para el 
+cociente de las medias de AUC. 
+
+2. Calcula el AUC para cada individuo en cada tratamiento disponible, usa la 
+fórmula de área trapezoidal:
+$$AUC = \sum_{\tau=1}^k(c_\tau + c_{\tau−1}) × (t_\tau − t_{\tau-1}) / 2$$ donde 
+$c$ es la concentración y $t$ son las horas. Tip: Si usas las funciones de dplyr 
+puede resultar útil usar `lag()`. Presenta una tabla con tus resultados.
+
+Para los siguientes incisos usa los datos zolmitriptan.csv, 
+para el $i$-ésimo individuo `subj` tienes mediciones de AUC bajo tratamiento y 
+referencia, denotemos a este par $x_i=(auc_{Ti}, auc_{Ri})$, suponiendo que las 
+$x_i$ se obuvieron de manera aleatoria de una distribución bivariada $P$, 
+entonces la cantidad poblacional de interés es el parámetro 
+$\theta = \mu_T/\mu_R$. 
+
+3. Calcula el estimador *plug-in* de $\theta$.
+
+4. Usa bootstrap para generar un intervalo del 90% de confianza para $\theta$, 
+¿la nueva tableta cumple el criterio de bioequivalencia de la FDA?
+
+### 3. Bootstrap encuestas 
+
+En este ejercicio utilizarás la Encuesta Nacional sobre Disponibilidad y Uso de 
+Tecnologías de la Información en los Hogares (ENDUTIH) para estimar a nivel nacional:
+
+- la proporción de hogares que tienen acceso a internet.  
+- la proporción de hogares con teléfono fijo.  
+- la proporción de hogares con teléfono móvil.  
+
+1. Reporta estimaciones puntuales e intervalos de confianza del 95% (utilizando bootstrap
+de Rao y Wu, puedes usar los paquetes survey o srvyr).
+
+2. Elige una de las métricas de arriba y calcula intervalos de confianza por estado, 
+grafica los intervalos y discute los resultados.
+
+
+

@@ -335,8 +335,8 @@ sprintf("Intervalo del 95%% de confianza de la proporciòn de hogares con teléf
 grafica los intervalos y discute los resultados.
 
 Utilizaremos la proporción de hogares con acceso a internet. 
-Los 5 estados con una menor proporción de hogares con acces a internet son: Chiapas (44.28%), Oaxaca (52.96%), Guerrero (53.86%), Veracruz (58.18%) y Puebla (58.33%).
-Los 5 estados con una mayor proporción de hogares con acces a internet son: Ciudad de México (89.47%), Baja California (86.44%), Quintana Roo (83.60%), Jalisco (83.34%) y Aguascalientes (81.43%).
+- Los 5 estados con una menor proporción de hogares con acces a internet son: Chiapas (44.28%), Oaxaca (52.96%), Guerrero (53.86%), Veracruz (58.18%) y Puebla (58.33%).
+- Los 5 estados con una mayor proporción de hogares con acces a internet son: Ciudad de México (89.47%), Baja California (86.44%), Quintana Roo (83.60%), Jalisco (83.34%) y Aguascalientes (81.43%).
 
 ```{r, fig.width=8, fig.height=10}
 estado_internet <- endutih_boot %>% 

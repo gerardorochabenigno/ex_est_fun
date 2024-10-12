@@ -1,6 +1,6 @@
 ---
 title: "Parcial fundamentos"
-author: "Nombres: DYLAN Y GERARDO ROCHA BENIGNO"
+author: "Nombres: DYLAN GABRIEL GONZALEZ SANCHEZ y GERARDO ROCHA BENIGNO"
 output: html_document
 ---
 
@@ -136,12 +136,6 @@ auc <- zolmitriptan |>
          base_altura = hora_base*concentracion_altura) |>
   summarize(auc= sum(base_altura, na.rm=TRUE))
 
-aux <- auc |> pivot_wider(names_from = "formulation", values_from = "auc") |> arrange(subj) |> mutate(Sujeto = as.character(subj))
-```
-```{r}
-
-library(gt)
-
 aux <- auc |> 
   pivot_wider(names_from = "formulation", values_from = "auc") |>
   arrange(subj) |>
@@ -150,42 +144,30 @@ aux <- auc |>
          Prueba = replace_na(Prueba, "N/A"),
          Referencia = as.character(round(Referencia,1)),
          Referencia = replace_na(Referencia, "N/A")
-         )
-  
-
-
-gt_table <- aux %>%
-  select(Sujeto, Prueba, Referencia) %>%  
-  gt() %>%
-  cols_label(
-    Sujeto = "Sujeto", 
-    Prueba = "Área bajo la curva (Prueba)", 
-    Referencia = "Área bajo la curva (Referencia)"
-  ) %>%
-  tab_style(
-    style = cell_borders(
-      sides = "all", 
-      color = "gray", 
-      weight = px(1)
-    ),
-    locations = cells_body()
-  ) %>%
-  cols_align(
-    align = "center", 
-    columns = everything()
-  ) %>%
-  cols_width(
-    everything() ~ px(150)  # Ajustar ancho de las columnas
-  ) %>%
-  tab_options(
-    table.width = pct(100),       # Ancho total de la tabla
-    table.font.size = px(14)      # Tamaño de fuente
-  )
-
-# Mostrar la tabla
-gt_table 
+         ) |>
+  ungroup()
 
 ```
+
+```{r}
+aux |>
+  select(Sujeto, Prueba, Referencia) |>
+  gt() |>
+  tab_header(title = "Área bajo la curva para las pruebas de bioequivalencia de dos formulaciones de Zolmitriptan") |>
+  cols_label(Sujeto = "Sujeto",
+             Prueba = "Formulación de Prueba",
+              Referencia = "Formulación de Referencia") |>
+  tab_style(style = cell_borders(sides = "all",
+                                 color = "gray",
+                                 weight = px(1)),
+            locations = cells_body()) |>
+  cols_align(align = "center",
+             columns = everything()) |>
+  cols_width(everything() ~ px(150)) |>
+  tab_options(table.width = pct(100),
+              table.font.size = px(14))
+```
+
 
 Para los siguientes incisos usa los datos zolmitriptan.csv, 
 para el $i$-ésimo individuo `subj` tienes mediciones de AUC bajo tratamiento y 
@@ -291,7 +273,6 @@ print("El intervalo de confianza bootstrap del estimador de razón de TMAX se en
 
 ```
 
-
 ### 3. Bootstrap encuestas 
 
 En este ejercicio utilizarás la Encuesta Nacional sobre Disponibilidad y Uso de 
@@ -378,9 +359,3 @@ ggplot(estado_internet_2, aes(x = prop_internet, y = factor(nombre, levels = sor
        x="Proporción de hogares con acceso a internet",
        y="Estado")
 ```
-
-
-```{r}
-estado_internet_2 |> arrange(prop_internet)
-```
-

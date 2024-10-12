@@ -1,6 +1,6 @@
 ---
 title: "Parcial fundamentos"
-author: "Nombres:"
+author: "Nombres: DYLAN Y GERARDO ROCHA BENIGNO"
 output: html_document
 ---
 
@@ -93,6 +93,21 @@ con la diferencia que la curva de Wikipedia es el promedio sobre todos los indiv
 tu graficarás una para cada uno. ¿Qué puedes ver en las gráficas?
 
 
+```{r, fig.width=20, fig.height=15}
+# Pivoteamos para tener un dataframe que podamos gráficar.
+zolmitriptan <- zolmitriptan_raw |> pivot_longer(cols = c(starts_with("HR")), names_prefix = "HR",  names_to = "hora", values_to =  "concentracion") |> 
+  mutate(hora = as.numeric(hora)/10,
+         formulation = if_else(formulation=="T", "Prueba", "Referencia"))
+
+ggplot(zolmitriptan, aes(x = hora, y = concentracion, group = formulation, colour = formulation)) +
+  geom_line() + 
+  labs(title="Concentración de Zolmitriptano en la sangre para diversos individuos",x="Tiempo transcurrido desde la toma de la dosis (horas)", y ="Zolmitriptano (mCG/ml)") +
+  theme(panel.spacing = unit(0.1, "lines")) +
+  theme_bw(base_size = 15) +
+  theme(strip.text = element_text(size = 12)) + 
+  facet_wrap(~subj, ncol = 6, scales="free") 
+```
+
 Para comprobar bioequivalencia la FDA solicita que el medicamento de prueba 
 tenga un comportamiento similar al del medicamento de referencia. Para ello se
 compara la máxima concentración de medicamento (CMAX), el tiempo que tarda el 
@@ -111,6 +126,67 @@ $$AUC = \sum_{\tau=1}^k(c_\tau + c_{\tau−1}) × (t_\tau − t_{\tau-1}) / 2$$ 
 $c$ es la concentración y $t$ son las horas. Tip: Si usas las funciones de dplyr 
 puede resultar útil usar `lag()`. Presenta una tabla con tus resultados.
 
+```{r}
+library(gt)
+auc <- zolmitriptan |>
+  select(subj, formulation, hora, concentracion) |> 
+  group_by(subj, formulation) |> 
+  mutate(hora_base = hora - lag(hora),
+         concentracion_altura = (concentracion+lag(concentracion))/2,
+         base_altura = hora_base*concentracion_altura) |>
+  summarize(auc= sum(base_altura, na.rm=TRUE))
+
+aux <- auc |> pivot_wider(names_from = "formulation", values_from = "auc") |> arrange(subj) |> mutate(Sujeto = as.character(subj))
+```
+```{r}
+
+library(gt)
+
+aux <- auc |> 
+  pivot_wider(names_from = "formulation", values_from = "auc") |>
+  arrange(subj) |>
+  mutate(Sujeto = as.character(subj),
+         Prueba = as.character(round(Prueba,1)),
+         Prueba = replace_na(Prueba, "N/A"),
+         Referencia = as.character(round(Referencia,1)),
+         Referencia = replace_na(Referencia, "N/A")
+         )
+  
+
+
+gt_table <- aux %>%
+  select(Sujeto, Prueba, Referencia) %>%  
+  gt() %>%
+  cols_label(
+    Sujeto = "Sujeto", 
+    Prueba = "Área bajo la curva (Prueba)", 
+    Referencia = "Área bajo la curva (Referencia)"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "all", 
+      color = "gray", 
+      weight = px(1)
+    ),
+    locations = cells_body()
+  ) %>%
+  cols_align(
+    align = "center", 
+    columns = everything()
+  ) %>%
+  cols_width(
+    everything() ~ px(150)  # Ajustar ancho de las columnas
+  ) %>%
+  tab_options(
+    table.width = pct(100),       # Ancho total de la tabla
+    table.font.size = px(14)      # Tamaño de fuente
+  )
+
+# Mostrar la tabla
+gt_table 
+
+```
+
 Para los siguientes incisos usa los datos zolmitriptan.csv, 
 para el $i$-ésimo individuo `subj` tienes mediciones de AUC bajo tratamiento y 
 referencia, denotemos a este par $x_i=(auc_{Ti}, auc_{Ri})$, suponiendo que las 
@@ -120,8 +196,39 @@ $\theta = \mu_T/\mu_R$.
 
 3. Calcula el estimador *plug-in* de $\theta$.
 
+```{r}
+zol2 <- read_csv(".\\datos\\zolmitriptan.csv", show_col_types = FALSE)
+
+theta <- zol2 |> 
+  summarize(mu_auc = sum(AUC)/n(),
+            mu_cmax = sum(CMAX)/n(), 
+            mu_tmax = sum(TMAX)/n(),
+            .by = Formulation) |>
+  pivot_wider(names_from = "Formulation", values_from = c("mu_auc", "mu_cmax", "mu_tmax")) |>
+  mutate(theta_auc = mu_auc_T/mu_auc_R,
+         theta_cmax = mu_cmax_T/mu_cmax_R,
+         theta_tmax = mu_tmax_T/mu_cmax_R)
+
+sprintf("Estimador plug-in de AUC (Área bajo la curva): %1.3f", theta$theta_auc)
+sprintf("Estimador plug-in de CMAX (Concentración máxima): %1.3f", theta$theta_cmax)
+sprintf("Estimador plug-in de TMAX (Con): %1.3f", theta$theta_tmax)
+```
+
+
 4. Usa bootstrap para generar un intervalo del 90% de confianza para $\theta$, 
 ¿la nueva tableta cumple el criterio de bioequivalencia de la FDA?
+
+```{r}
+set.seed(123)
+dist_boot_auc <- map_df(1:5000, 
+                    ~slice_sample(zol2, prop = 1, replace = TRUE, by = Formulation) |> 
+                      summarize(mu = sum(AUC)/n(), .by = Formulation) |>
+                      pivot_wider(names_from = "Formulation", values_from = "mu", names_prefix = "mu_") |>
+                      mutate(theta = mu_T/mu_R) |>
+                      mutate(iter = .x)
+                    )
+```
+
 
 ### 3. Bootstrap encuestas 
 

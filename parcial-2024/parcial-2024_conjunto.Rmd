@@ -197,7 +197,7 @@ $\theta = \mu_T/\mu_R$.
 3. Calcula el estimador *plug-in* de $\theta$.
 
 ```{r}
-zol2 <- read_csv(".\\datos\\zolmitriptan.csv", show_col_types = FALSE)
+zol2 <- read_csv("./datos/zolmitriptan.csv", show_col_types = FALSE)
 
 theta <- zol2 |> 
   summarize(mu_auc = sum(AUC)/n(),
@@ -207,11 +207,11 @@ theta <- zol2 |>
   pivot_wider(names_from = "Formulation", values_from = c("mu_auc", "mu_cmax", "mu_tmax")) |>
   mutate(theta_auc = mu_auc_T/mu_auc_R,
          theta_cmax = mu_cmax_T/mu_cmax_R,
-         theta_tmax = mu_tmax_T/mu_cmax_R)
+         theta_tmax = mu_tmax_T/mu_tmax_R)
 
 sprintf("Estimador plug-in de AUC (Área bajo la curva): %1.3f", theta$theta_auc)
 sprintf("Estimador plug-in de CMAX (Concentración máxima): %1.3f", theta$theta_cmax)
-sprintf("Estimador plug-in de TMAX (Con): %1.3f", theta$theta_tmax)
+sprintf("Estimador plug-in de TMAX (Tiempo en que se alcanzó la máxima concentración): %1.3f", theta$theta_tmax)
 ```
 
 
@@ -220,13 +220,75 @@ sprintf("Estimador plug-in de TMAX (Con): %1.3f", theta$theta_tmax)
 
 ```{r}
 set.seed(123)
-dist_boot_auc <- map_df(1:5000, 
-                    ~slice_sample(zol2, prop = 1, replace = TRUE, by = Formulation) |> 
-                      summarize(mu = sum(AUC)/n(), .by = Formulation) |>
-                      pivot_wider(names_from = "Formulation", values_from = "mu", names_prefix = "mu_") |>
-                      mutate(theta = mu_T/mu_R) |>
-                      mutate(iter = .x)
+dist_boot <- map_df(1:5000, 
+                    ~slice_sample(zol2, prop = 1, replace = TRUE, by = Formulation) |>
+                      summarize(mu_auc = sum(AUC)/n(),
+                                mu_cmax = sum(CMAX)/n(),
+                                mu_tmax = sum(TMAX)/n(),
+                                .by = Formulation) |>
+                      pivot_wider(names_from = "Formulation", values_from = c("mu_auc", "mu_cmax", "mu_tmax")) |>
+                      mutate(theta_auc = mu_auc_T/mu_auc_R,
+                             theta_cmax = mu_cmax_T/mu_cmax_R,
+                             theta_tmax = mu_tmax_T/mu_tmax_R) |>
+                      select(theta_auc, theta_cmax, theta_tmax) |>
+                      mutate(iter=.x)
                     )
+```
+
+```{r, fig.width=15, fig.height=7}
+library(patchwork)
+dist_boot_auc  <- ggplot(dist_boot, aes(x=theta_auc)) + geom_histogram(bins = 50)  + labs(title="Dist. bootstrap de estimador de razón de AUC", x = "Estimador de razón - AUC", y = "Conteo")
+dist_boot_cmax <- ggplot(dist_boot, aes(x=theta_cmax)) + geom_histogram(bins = 50) + labs(title="Dist. bootstrap de estimador de razón de CMAX", x = "Estimador de razón - CMAX", y = "Conteo")
+dist_boot_tmax <- ggplot(dist_boot, aes(x=theta_tmax)) + geom_histogram(bins = 50) + labs(title="Dist. bootstrap de estimador de razón de TMAX", x = "Estimador de razón - TMAX", y = "Conteo")
+
+qq_auc <- ggplot(dist_boot, aes(sample=theta_auc))+ stat_qq() + stat_qq_line() +labs(title="QQ de estimador de razón de AUC", y="Estimador de razón (AUC)", x="")
+qq_cmax <- ggplot(dist_boot, aes(sample=theta_cmax))+ stat_qq() + stat_qq_line() +labs(title="QQ de estimador de razón de CMAX", y="Estimador de razón (CMAX)", x="")
+qq_tmax <- ggplot(dist_boot, aes(sample=theta_cmax))+ stat_qq() + stat_qq_line() +labs(title="QQ de estimador de razón de TMAX", y="Estimador de razón (TMAX)", x="")
+
+(dist_boot_auc + dist_boot_cmax + dist_boot_tmax) / (qq_auc + qq_cmax +qq_tmax)
+
+
+
+```
+
+```{r}
+# AUC
+print("----AUC")
+sprintf("Intervalo del 90%% de confianza del estimador de rázon de AUC usando el método de percentiles: (%1.5f , %1.5f)", 
+        unname(quantile(dist_boot$theta_auc, probs = c(0.05))),
+        unname(quantile(dist_boot$theta_auc, probs = c(0.95)))
+        )
+# La dist. normal acumula el 90% de la distribución en aproximadamente 1.645 la desviación estándar alrededor de la media
+sprintf("Intervalo del 90%% de confianza del estimador de rázon de AUC el método normal: (%1.5f , %1.5f)", 
+        theta$theta_auc - 1.645*sd(dist_boot$theta_auc),
+        theta$theta_auc + 1.645*sd(dist_boot$theta_auc)
+        )
+print("El intervalo de confianza bootstrap del estimador de razón de AUC se encuentra dentro de los requerimientos de la FDA")
+
+print("----CMAX")
+sprintf("Intervalo del 90%% de confianza del estimador de rázon de CMAX usando el método de percentiles: (%1.5f , %1.5f)", 
+        unname(quantile(dist_boot$theta_cmax, probs = c(0.05))),
+        unname(quantile(dist_boot$theta_cmax, probs = c(0.95)))
+        )
+# La dist. normal acumula el 90% de la distribución en aproximadamente 1.645 la desviación estándar alrededor de la media
+sprintf("Intervalo del 90%% de confianza del estimador de rázon de CMAX el método normal: (%1.5f , %1.5f)", 
+        theta$theta_cmax - 1.645*sd(dist_boot$theta_cmax),
+        theta$theta_cmax + 1.645*sd(dist_boot$theta_cmax)
+        )
+print("El intervalo de confianza bootstrap del estimador de razón de CMAX se encuentra dentro de los requerimientos de la FDA")
+
+print("----TMAX")
+sprintf("Intervalo del 90%% de confianza del estimador de rázon de TMAX usando el método de percentiles: (%1.5f , %1.5f)", 
+        unname(quantile(dist_boot$theta_tmax, probs = c(0.05))),
+        unname(quantile(dist_boot$theta_tmax, probs = c(0.95)))
+        )
+# La dist. normal acumula el 90% de la distribución en aproximadamente 1.645 la desviación estándar alrededor de la media
+sprintf("Intervalo del 90%% de confianza del estimador de rázon de TMAX el método normal: (%1.5f , %1.5f)", 
+        theta$theta_tmax - 1.645*sd(dist_boot$theta_tmax),
+        theta$theta_tmax + 1.645*sd(dist_boot$theta_tmax)
+        )
+print("El intervalo de confianza bootstrap del estimador de razón de TMAX se encuentra dentro de los requerimientos de la FDA")
+
 ```
 
 
@@ -242,8 +304,83 @@ Tecnologías de la Información en los Hogares (ENDUTIH) para estimar a nivel na
 1. Reporta estimaciones puntuales e intervalos de confianza del 95% (utilizando bootstrap
 de Rao y Wu, puedes usar los paquetes survey o srvyr).
 
+```{r}
+library(srvyr)
+set.seed(123)
+dic_endutih <- read_csv("./datos/endutih/diccionario_de_datos_tr_endutih_hogares_anual_2023.csv", show_col_types = FALSE)
+tr_endutih <- read_csv("./datos/endutih/tr_endutih_hogares_anual_2023.csv", show_col_types = FALSE)
+
+# Transformamos tibble a tbl_svy 
+endutih_design <- tr_endutih |> 
+  select(UPM, FAC_HOG, EST_DIS, P4_4, P4_1_6, P5_5, ENT) |>
+  mutate(con_internet = if_else(P4_4==1,1,0),
+         con_movil    = if_else(P4_1_6==1,1,0),
+         con_fijo     = if_else(P5_5==1,1,0)) |>
+  select(UPM, FAC_HOG, EST_DIS, ENT, con_internet, con_movil, con_fijo) |>
+  as_survey_design(ids = UPM, weights = FAC_HOG, strata = EST_DIS)
+
+# Calculamos el error muestral bootstrap
+endutih_boot <- endutih_design %>% 
+  as_survey_rep(type = "subbootstrap", replicates = 500)
+
+```
+
+
+```{r}
+# Intervalo de confianza
+metricas <- endutih_boot %>% 
+  srvyr::summarise(prop_internet = survey_mean(con_internet),
+                   prop_movil    = survey_mean(con_movil),
+                   prop_fijo    = survey_mean(con_fijo))
+
+sprintf("Estimador puntual de la proporción de hogares con acceso a internet: %1.5f", metricas$prop_internet)
+sprintf("Estimador puntual de la proporción de hogares con teléfono fijo: %1.5f", metricas$prop_fijo)
+sprintf("Estimador puntual de la proporción de hogares con teléfono móvil: %1.5f", metricas$prop_movil)
+
+sprintf("Intervalo del 95%% de confianza de la proporciòn de hogares con acceso a internet: (%1.5f, %1.5f)", 
+        metricas$prop_internet-2*metricas$prop_internet_se, 
+        metricas$prop_internet+2*metricas$prop_internet_se)
+sprintf("Intervalo del 95%% de confianza de la proporciòn de hogares con teléfono fijo: (%1.5f, %1.5f)", 
+        metricas$prop_fijo-2*metricas$prop_fijo_se, 
+        metricas$prop_fijo+2*metricas$prop_fijo_se)
+sprintf("Intervalo del 95%% de confianza de la proporciòn de hogares con teléfono móvil: (%1.5f, %1.5f)", 
+        metricas$prop_movil-2*metricas$prop_movil_se, 
+        metricas$prop_movil+2*metricas$prop_movil_se)
+
+
+```
+
+
+
 2. Elige una de las métricas de arriba y calcula intervalos de confianza por estado, 
 grafica los intervalos y discute los resultados.
 
+Utilizaremos la proporción de hogares con acceso a internet. 
+Los 5 estados con una menor proporción de hogares con acces a internet son: Chiapas (44.28%), Oaxaca (52.96%), Guerrero (53.86%), Veracruz (58.18%) y Puebla (58.33%).
+Los 5 estados con una mayor proporción de hogares con acces a internet son: Ciudad de México (89.47%), Baja California (86.44%), Quintana Roo (83.60%), Jalisco (83.34%) y Aguascalientes (81.43%).
 
+```{r, fig.width=8, fig.height=10}
+estado_internet <- endutih_boot %>% 
+  group_by(ENT) %>% 
+  srvyr::summarise(prop_internet = survey_mean(con_internet)) |>
+  mutate(inf = prop_internet - 2* prop_internet_se,
+         sup = prop_internet + 2* prop_internet_se)
+
+estados <- read_delim("./datos/estados.txt", show_col_types = FALSE)
+estado_internet_2 <- left_join(estado_internet, estados, by="ENT") |>select(nombre, inf, sup, prop_internet)
+
+
+ggplot(estado_internet_2, aes(x = prop_internet, y = factor(nombre, levels = sort(nombre)), xmax = sup, xmin = inf)) + 
+  geom_point(colour = "red") + 
+  geom_linerange() +
+  geom_hline(yintercept = 0, colour = "gray") + 
+  labs(title="Proporción de hogares en cada estado con acceso a internet",
+       x="Proporción de hogares con acceso a internet",
+       y="Estado")
+```
+
+
+```{r}
+estado_internet_2 |> arrange(prop_internet)
+```
 

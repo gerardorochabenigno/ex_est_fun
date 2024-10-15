@@ -21,7 +21,8 @@ y el código comentado.
 será el único medio para resolver dudas del examen.
 
 
-```{r setup, include=FALSE, message=FALSE}
+```{r, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, error = TRUE)
 library(tidyverse)
 library(readr)
 library(patchwork)
@@ -29,14 +30,12 @@ library(lineup)
 library(nullabor)
 library(gt)
 library(srvyr)
-
-
-knitr::opts_chunk$set(echo = TRUE, error = TRUE)
+library(ggrepel)
 ```
 
 
-## Pruebas de hipótesis
 
+## Pruebas de hipótesis
 ### 1. Pruebas de hipótesis: Ascorbato
 
 Pacientes con cancer terminal avanzado en el estómago y mama se trataron con ascorbato para prolongar la supervivencia. Los datos `ascorbate` muestran 
@@ -48,9 +47,9 @@ los dos grupos. Describe tus conclusiones.
 
 Antes de realizar la prueba de hipótesis visual, visualizaremos la distribución de días de supervivencia de la muestra original. A primera vista, pareciera que la distribución del número de días tiende a valores más elevados para los pacientes con cancer de mamá que a los pacientes con cáncer de estómago, aunque la hipotesis visual nos ayudará a corroborar si esto es cierto o no.
 
-```{r setup, include=TRUE, message=FALSE}
+```{r}
 #graficar la distribucion original y conmparara ambos tipos
-ascorbate <- read_csv("datos/ascorbate.csv")
+ascorbate <- read_csv("datos/ascorbate.csv", show_col_types = FALSE)
 ascorbate_log_long <- ascorbate %>%
   mutate(
     stomach_log = log(stomach),
@@ -63,13 +62,16 @@ ascorbate_log_long <- ascorbate %>%
 ggplot(ascorbate_log_long, aes(x = type, y = survival)) + 
   coord_flip() +
   geom_boxplot() + 
-  theme_minimal() 
+  theme_minimal() +
+  labs(title = "Distribución de días de supervivencia para\npacientes con cáncer de mama y de estómago",
+       x = "Tipo de cáncer",
+       y = "Días de supervivencia (log)")
 
 ```
 
 Ahora realizamos las permutaciones
 
-```{r setup, include=TRUE, message=FALSE}
+```{r}
 set.seed(123)
 perms_type <- lineup(null_permute("type"), ascorbate_log_long, n = 20)
 
@@ -78,11 +80,14 @@ ggplot(perms_type, aes(x = type, y = survival)) +
   geom_boxplot() + 
   facet_wrap(~ .sample, ncol=5) + 
   scale_y_continuous(breaks = c(3, 5, 7))  +
-  theme_minimal() 
+  theme_minimal() +
+  labs(title = "Distribución de días de supervivencia para\npacientes con cáncer de mama y de estómago",
+       x = "Tipo de cáncer",
+       y = "Días de supervivencia (log)")
 ```
 
 
-Es evidente cual es la grafica de caja y brazos que pertenece a la muestra original, entonces podemos decir que rechazamos la hipotesis nula de que ambas distribuciones (cancer de mama y de estomago) provienen de la misma distribucion
+Es evidente qué la gráfica de caja y brazos que pertenece a la muestra original es la gráfica 10, entonces podemos decir que rechazamos la hipotesis nula de que ambas distribuciones (cancer de mama y de estomago) provienen de la misma distribucion.
 
 
 2. Usa una prueba de permutación para examinar la hipótesis de que no hay 
@@ -92,7 +97,7 @@ Hipotesis nula: No hay diferencia en la media de los tiempos de supervivencia
 Hipotesis alterna: Hay una diferencia en la media de los tiempos de supervivencia entre los grupos de 	 	cancer de mama y cancer de estomago.
 
 Primero revisamos nuestra tabla de permutaciones
-```{r setup, include=TRUE, message=FALSE}
+```{r}
 
 dif_obs <- ascorbate_log_long %>% 
   group_by(type) %>% 
@@ -108,7 +113,7 @@ glimpse(perms_survival)
 ```
 
 Despues mostramos nuestros valores de referencia
-```{r setup, include=TRUE, message=FALSE}
+```{r}
 valores_ref <- perms_survival %>%
   group_by(.sample, type) %>% 
   summarise(prom=mean(survival), .groups = 'drop') %>% 
@@ -120,7 +125,7 @@ glimpse(valores_ref)
 
 Graficamos la distribucion de nuestros valores de referencia
 
-```{r setup, include=TRUE, message=FALSE}
+```{r}
 # Función de distribución acumulada (inverso de función de cuantiles)
 dist_perm <- ecdf(valores_ref$diferencia)
 # Calculamos el percentil del valor observado
@@ -130,7 +135,7 @@ percentil_obs
 g_1 <- ggplot(valores_ref, aes(sample = diferencia)) + geom_qq(distribution = stats::qunif)  +
   xlab("f") + ylab("diferencia") + labs(subtitle = "Distribución nula o de referencia") +
   geom_hline(yintercept = dif_obs, colour = "red") +
-  annotate("text", x = 0.18, y = dif_obs + 0.13, label = "diferencia observada", colour = "red")
+  annotate("text", x = 0.18, y = dif_obs + 0.30, label = "diferencia\nobservada", colour = "red")
 g_2 <- ggplot(valores_ref, aes(x = diferencia)) + geom_histogram(binwidth = 0.28) +
   coord_flip() + xlab("") + labs(subtitle = " ") +
   geom_vline(xintercept = dif_obs, colour = "red") +
@@ -138,13 +143,15 @@ g_2 <- ggplot(valores_ref, aes(x = diferencia)) + geom_histogram(binwidth = 0.28
 g_1 + g_2
 ```
 
-observamos nuestro valor p de una y dos colas (el que nos interesa es el de dos colas)
-```{r setup, include=TRUE, message=FALSE}
+Observamos nuestro valor p de una y dos colas (el que nos interesa es el de dos colas). Debido a que el valor p de la prueba de dos colas es menor a 0.05, rechazamos la hipotesis nula y concluimos que hay una diferencia en la media de los tiempos de supervivencia entre los grupos de cancer de mama y cancer de estomago.
+
+```{r}
 valor_p = 1 - percentil_obs
-valor_p
+sprintf("Valor p de la prueba de una cola: %1.5f",round(valor_p,3))
 
 valor_p_dos_colas = 2 * min(dist_perm(dif_obs), (1 - dist_perm(dif_obs)))
-valor_p_dos_colas
+sprintf("Valor p de la prueba de dos colas: %1.5f",round(valor_p_dos_colas,3))
+#valor_p_dos_colas
 ```
 
 
@@ -189,8 +196,9 @@ de referencia, sin embargo, podemos usar la información disponible para entende
 como se calculan las métricas.
 
 ```{r}
+# 1. Leemos los datos
 zolmitriptan_raw <- read_delim("datos/zolmitriptan-raw.txt", 
-    "\t", escape_double = FALSE, trim_ws = TRUE)
+    "\t", escape_double = FALSE, trim_ws = TRUE, show_col_types = FALSE)
 ```
 
 1. Grafica la concentración del medicamento por hora. Debes graficar en el eje 
@@ -199,6 +207,7 @@ cada tratamiento. Un ejemplo de lo que debes hacer  es [esta gráfica](https://e
 con la diferencia que la curva de Wikipedia es el promedio sobre todos los individuos y 
 tu graficarás una para cada uno. ¿Qué puedes ver en las gráficas?
 
+Podemos ver en las graficas que para aquellos sujetos donde hay valores de prueba y referencia la concentración de zolmitriptan es similar para la mayoría, salvo para los sujetos 6, 10 y 18. También podemos observar que para la mayoríoa de los individuos, la concentración en la sangre es practicamente cero después de la hora 10 después de la administración de la dosis, tanto para la formulación de referencia como la de prueba.
 
 ```{r, fig.width=20, fig.height=15}
 # Pivoteamos para tener un dataframe que podamos gráficar.
@@ -206,16 +215,18 @@ zolmitriptan <- zolmitriptan_raw |> pivot_longer(cols = c(starts_with("HR")), na
   mutate(hora = as.numeric(hora)/10,
          formulation = if_else(formulation=="T", "Prueba", "Referencia"))
 
+# Realizamos una gráfica por sujeto, y para cada una de las formulaciones disponibles
 ggplot(zolmitriptan, aes(x = hora, y = concentracion, group = formulation, colour = formulation)) +
   geom_line() + 
-  labs(title="Concentración de Zolmitriptano en la sangre para diversos individuos",x="Tiempo transcurrido desde la toma de la dosis (horas)", y ="Zolmitriptano (mCG/ml)") +
-  theme(panel.spacing = unit(0.1, "lines")) +
+  labs(title="Concentración de Zolmitriptan en la sangre para diversos individuos",
+       x="Tiempo transcurrido desde la toma de la dosis (horas)", 
+       y ="Concentración de zolmitriptan (mCG/ml)",
+       colour ="") +
+  theme(panel.spacing = unit(0.1, "lines")) + 
   theme_bw(base_size = 15) +
-  theme(strip.text = element_text(size = 12)) + 
+  theme(strip.text = element_text(size = 16)) + 
   facet_wrap(~subj, ncol = 6, scales="free") 
 ```
-
-Podemos ver en las graficas que los tratamientos de prueba y de referencia (donde estan disponibles) son similares y tienen practicamente el mismo comportamiento tanto en el mismo individuo como entre ellos. 
 
 
 Para comprobar bioequivalencia la FDA solicita que el medicamento de prueba 
@@ -236,7 +247,10 @@ $$AUC = \sum_{\tau=1}^k(c_\tau + c_{\tau−1}) × (t_\tau − t_{\tau-1}) / 2$$ 
 $c$ es la concentración y $t$ son las horas. Tip: Si usas las funciones de dplyr 
 puede resultar útil usar `lag()`. Presenta una tabla con tus resultados.
 
+Presentamos una tabla generada con gt.
+
 ```{r}
+# Creamos una tabla llamada auc que contiene el área bajo la curva para cada individuo y cada formulación disponible
 auc <- zolmitriptan |>
   select(subj, formulation, hora, concentracion) |> 
   group_by(subj, formulation) |> 
@@ -245,20 +259,19 @@ auc <- zolmitriptan |>
          base_altura = hora_base*concentracion_altura) |>
   summarize(auc= sum(base_altura, na.rm=TRUE))
 
+# Trabajamos con una tabla auxiliar para no modificar la información original
 aux <- auc |> 
-  pivot_wider(names_from = "formulation", values_from = "auc") |>
-  arrange(subj) |>
-  mutate(Sujeto = as.character(subj),
+  pivot_wider(names_from = "formulation", values_from = "auc") |> # Creamos dos columnas  para el AUC de la formulación de prueba y de referencia
+  arrange(subj) |> # Ordenamos por sujeto
+  mutate(Sujeto = as.character(subj), # Para asegurarnos que sale bien el resultado en gt
          Prueba = as.character(round(Prueba,1)),
          Prueba = replace_na(Prueba, "N/A"),
          Referencia = as.character(round(Referencia,1)),
          Referencia = replace_na(Referencia, "N/A")
          ) |>
-  ungroup()
+  ungroup() # Para que no duplique las observaciones en gt.
 
-```
-
-```{r}
+# Creamos una tabla con los títulos adecuados.
 aux |>
   select(Sujeto, Prueba, Referencia) |>
   gt() |>
@@ -275,7 +288,9 @@ aux |>
   cols_width(everything() ~ px(150)) |>
   tab_options(table.width = pct(100),
               table.font.size = px(14))
+
 ```
+
 
 
 Para los siguientes incisos usa los datos zolmitriptan.csv, 
@@ -286,6 +301,8 @@ entonces la cantidad poblacional de interés es el parámetro
 $\theta = \mu_T/\mu_R$. 
 
 3. Calcula el estimador *plug-in* de $\theta$.
+
+En la pantalla imprimimos los estimadores de razón de  AUC, TMAX y CMAX.
 
 ```{r}
 zol2 <- read_csv("./datos/zolmitriptan.csv", show_col_types = FALSE)
@@ -309,8 +326,11 @@ sprintf("Estimador plug-in de TMAX (Tiempo en que se alcanzó la máxima concent
 4. Usa bootstrap para generar un intervalo del 90% de confianza para $\theta$, 
 ¿la nueva tableta cumple el criterio de bioequivalencia de la FDA?
 
+La nueva tableta cumple con el criterio de bioequivalencia de la FDA debido a que los intervalos del 90% de confianza bootstrap de los estimadores de razón de AUC, TMAX y CMAX se encuentran dentro del intervalo (80%, 125%) requerido usando tanto el método de percentiles, como el método normal. A continuación presentamos los intervalos de confianza bootstrap de los estimadores de razón utilizando tanto el método de percentiles como el método normal.
 ```{r}
+# Para reproducibilidad
 set.seed(123)
+# Realizamos las replicaciones bootsrap
 dist_boot <- map_df(1:5000, 
                     ~slice_sample(zol2, prop = 1, replace = TRUE, by = Formulation) |>
                       summarize(mu_auc = sum(AUC)/n(),
@@ -324,24 +344,7 @@ dist_boot <- map_df(1:5000,
                       select(theta_auc, theta_cmax, theta_tmax) |>
                       mutate(iter=.x)
                     )
-```
 
-```{r, fig.width=15, fig.height=7}
-dist_boot_auc  <- ggplot(dist_boot, aes(x=theta_auc)) + geom_histogram(bins = 50)  + labs(title="Dist. bootstrap de estimador de razón de AUC", x = "Estimador de razón - AUC", y = "Conteo")
-dist_boot_cmax <- ggplot(dist_boot, aes(x=theta_cmax)) + geom_histogram(bins = 50) + labs(title="Dist. bootstrap de estimador de razón de CMAX", x = "Estimador de razón - CMAX", y = "Conteo")
-dist_boot_tmax <- ggplot(dist_boot, aes(x=theta_tmax)) + geom_histogram(bins = 50) + labs(title="Dist. bootstrap de estimador de razón de TMAX", x = "Estimador de razón - TMAX", y = "Conteo")
-
-qq_auc <- ggplot(dist_boot, aes(sample=theta_auc))+ stat_qq() + stat_qq_line() +labs(title="QQ de estimador de razón de AUC", y="Dist. Empírica", x="Dist. Teórica")
-qq_cmax <- ggplot(dist_boot, aes(sample=theta_cmax))+ stat_qq() + stat_qq_line() +labs(title="QQ de estimador de razón de CMAX", y="Dist. Empírica", x="Dist. Teórica")
-qq_tmax <- ggplot(dist_boot, aes(sample=theta_cmax))+ stat_qq() + stat_qq_line() +labs(title="QQ de estimador de razón de TMAX", y="Dist. Empírica", x="Dist. Teórica")
-
-(dist_boot_auc + dist_boot_cmax + dist_boot_tmax) / (qq_auc + qq_cmax +qq_tmax)
-
-
-
-```
-
-```{r}
 # AUC
 print("----AUC")
 sprintf("Intervalo del 90%% de confianza del estimador de rázon de AUC usando el método de percentiles: (%1.5f , %1.5f)", 
@@ -380,6 +383,24 @@ sprintf("Intervalo del 90%% de confianza del estimador de rázon de TMAX el mét
 print("El intervalo de confianza bootstrap del estimador de razón de TMAX se encuentra dentro de los requerimientos de la FDA")
 
 ```
+Para tener mayor robustez de nuestros reusltados, presentamos gráficos qq y se observa la distribución bootstrap se comporta de manera similar a una distribucón normal. 
+
+```{r, fig.width=15, fig.height=7}
+# Realizamos gráficas de la distribución bootstrap y de los qq plots de cada estimador de razón.
+dist_boot_auc  <- ggplot(dist_boot, aes(x=theta_auc)) + 
+  geom_histogram(bins = 50)  + labs(title="Dist. bootstrap de estimador de razón de AUC", x = "Estimador de razón - AUC", y = "Conteo")
+dist_boot_cmax <- ggplot(dist_boot, aes(x=theta_cmax)) + 
+  geom_histogram(bins = 50) + labs(title="Dist. bootstrap de estimador de razón de CMAX", x = "Estimador de razón - CMAX", y = "Conteo")
+dist_boot_tmax <- ggplot(dist_boot, aes(x=theta_tmax)) + 
+  geom_histogram(bins = 50) + labs(title="Dist. bootstrap de estimador de razón de TMAX", x = "Estimador de razón - TMAX", y = "Conteo")
+
+qq_auc <- ggplot(dist_boot, aes(sample=theta_auc))+ stat_qq() + stat_qq_line() +labs(title="QQ de estimador de razón de AUC", y="Dist. Empírica", x="Dist. Teórica")
+qq_cmax <- ggplot(dist_boot, aes(sample=theta_cmax))+ stat_qq() + stat_qq_line() +labs(title="QQ de estimador de razón de CMAX", y="Dist. Empírica", x="Dist. Teórica")
+qq_tmax <- ggplot(dist_boot, aes(sample=theta_cmax))+ stat_qq() + stat_qq_line() +labs(title="QQ de estimador de razón de TMAX", y="Dist. Empírica", x="Dist. Teórica")
+
+(dist_boot_auc + dist_boot_cmax + dist_boot_tmax) / (qq_auc + qq_cmax +qq_tmax)
+
+```
 
 ### 3. Bootstrap encuestas 
 
@@ -393,6 +414,7 @@ Tecnologías de la Información en los Hogares (ENDUTIH) para estimar a nivel na
 1. Reporta estimaciones puntuales e intervalos de confianza del 95% (utilizando bootstrap
 de Rao y Wu, puedes usar los paquetes survey o srvyr).
 
+**Respuesta**
 ```{r}
 set.seed(123)
 dic_endutih <- read_csv("./datos/endutih/diccionario_de_datos_tr_endutih_hogares_anual_2023.csv", show_col_types = FALSE)
@@ -400,14 +422,14 @@ tr_endutih <- read_csv("./datos/endutih/tr_endutih_hogares_anual_2023.csv", show
 
 # Transformamos tibble a tbl_svy 
 endutih_design <- tr_endutih |> 
-  select(UPM, FAC_HOG, EST_DIS, P4_4, P4_1_6, P5_5, ENT) |>
-  mutate(con_internet = if_else(P4_4==1,1,0),
+  select(UPM, FAC_HOG, EST_DIS, P4_4, P4_1_6, P5_5, ENT) |> # solo nos quedamos con las columnas que utilizaremos para que las replicaciones se realicen rapidamente
+  mutate(con_internet = if_else(P4_4==1,1,0), # Realizamos dummy para calcular de manera más sencilla las proporciones
          con_movil    = if_else(P4_1_6==1,1,0),
          con_fijo     = if_else(P5_5==1,1,0)) |>
   select(UPM, FAC_HOG, EST_DIS, ENT, con_internet, con_movil, con_fijo) |>
-  as_survey_design(ids = UPM, weights = FAC_HOG, strata = EST_DIS)
+  as_survey_design(ids = UPM, weights = FAC_HOG, strata = EST_DIS) # Transformamos a objeto de diseño muestral
 
-# Calculamos el error muestral bootstrap
+# Realizamos las replicaciones bootstrap 
 endutih_boot <- endutih_design %>% 
   as_survey_rep(type = "subbootstrap", replicates = 500)
 
@@ -415,12 +437,13 @@ endutih_boot <- endutih_design %>%
 
 
 ```{r}
-# Intervalo de confianza
+# Calculamos las estimaciones puntuales de las proporciones
 metricas <- endutih_boot %>% 
   srvyr::summarise(prop_internet = survey_mean(con_internet),
                    prop_movil    = survey_mean(con_movil),
                    prop_fijo    = survey_mean(con_fijo))
 
+# Imprimimos en la pantalla las estimaciones puntuales y los intervalos de confianza
 sprintf("Estimador puntual de la proporción de hogares con acceso a internet: %1.5f", metricas$prop_internet)
 sprintf("Estimador puntual de la proporción de hogares con teléfono fijo: %1.5f", metricas$prop_fijo)
 sprintf("Estimador puntual de la proporción de hogares con teléfono móvil: %1.5f", metricas$prop_movil)
@@ -441,26 +464,33 @@ sprintf("Intervalo del 95%% de confianza de la proporciòn de hogares con teléf
 2. Elige una de las métricas de arriba y calcula intervalos de confianza por estado, 
 grafica los intervalos y discute los resultados.
 
-Utilizaremos la proporción de hogares con acceso a internet. 
-- Los 5 estados con una menor proporción de hogares con acces a internet son: Chiapas (44.28%), Oaxaca (52.96%), Guerrero (53.86%), Veracruz (58.18%) y Puebla (58.33%).
-- Los 5 estados con una mayor proporción de hogares con acces a internet son: Ciudad de México (89.47%), Baja California (86.44%), Quintana Roo (83.60%), Jalisco (83.34%) y Aguascalientes (81.43%).
+Utilizaremos la proporción de hogares con acceso a internet. Del cálculo de las proporcines por estado podemos observar que:
+   - Los 5 estados con una menor proporción de hogares con acces a internet son: Chiapas (44.28%), Oaxaca (52.96%), Guerrero (53.86%), Veracruz (58.18%) y Puebla (58.33%).
+   - Los 5 estados con una mayor proporción de hogares con acces a internet son: Ciudad de México (89.47%), Baja California (86.44%), Quintana Roo (83.60%), Jalisco (83.34%) y Aguascalientes (81.43%).
 
 ```{r, fig.width=8, fig.height=10}
-estado_internet <- endutih_boot %>% 
-  group_by(ENT) %>% 
+estado_internet <- endutih_boot |> 
+  group_by(ENT) |>
   srvyr::summarise(prop_internet = survey_mean(con_internet)) |>
   mutate(inf = prop_internet - 2* prop_internet_se,
          sup = prop_internet + 2* prop_internet_se)
 
+# Añadimos un archivo con los nombres de los estados
 estados <- read_delim("./datos/estados.txt", show_col_types = FALSE)
-estado_internet_2 <- left_join(estado_internet, estados, by="ENT") |>select(nombre, inf, sup, prop_internet)
+estado_internet_2 <- left_join(estado_internet, estados, by="ENT") |>select(nombre, inf, sup, prop_internet) |> arrange(nombre)# Creamos objeto nuevo para no tener problemas con el left_join
 
+# Esta línea nos asegura que en el gráfico los estados se ordenen en orden alfabetico
+estado_internet_2$nombre <- fct_reorder(estado_internet_2$nombre, estado_internet_2$prop_internet, .desc = FALSE)
 
-ggplot(estado_internet_2, aes(x = prop_internet, y = factor(nombre, levels = sort(nombre)), xmax = sup, xmin = inf)) + 
-  geom_point(colour = "firebrick") + 
-  geom_linerange() +
+# Realizamos una gráfica por estado de la estimación puntual de la proporción de hogares con acceso a internet y su intervalo de confianza
+ggplot(estado_internet_2, aes(x = prop_internet, y = nombre, xmax = sup, xmin = inf)) + 
+  geom_point(aes(colour = "Estimación puntual"), size = 2) + 
+  geom_linerange(aes(colour = "Intervalo de confianza (95%)")) +
   geom_hline(yintercept = 0, colour = "gray") + 
-  labs(title="Proporción de hogares en cada estado con acceso a internet",
+  geom_text_repel(aes(label = round(prop_internet,3)), size=3) +
+  labs(title="Proporción de hogares con acceso a internet en cada estado",
        x="Proporción de hogares con acceso a internet",
-       y="Estado")
+       y="Estado",
+       colour = "",
+       size="")
 ```
